@@ -1,0 +1,308 @@
+# -*- coding:utf-8 -*-
+
+import os, logging
+from xmlrpclib          import ServerProxy, Binary
+from SimpleXMLRPCServer import SimpleXMLRPCServer
+from lib.common         import splitStream
+from lib.hash           import getCheckSum
+from lib.saderror       import FileNotFound, EmptyStream, CorruptedFile
+from lib.ida            import dispersa_archivo as dis
+from lib.config         import SADConfig
+from lib.common         import notImplementedFunction, Messages
+from data.message       import Message
+
+class ServerHandler:
+
+    def __init__(self):
+        pass
+
+class ProxyHandler:
+
+    def __init__(self):
+        conf = SADConfig()
+
+        self._host      = conf.getAddress()
+        self._port      = conf.getPort()
+        self._storage   = conf.getStoragePath()
+        self._db        = conf.getDB()
+        self._msu       = conf.getMSU()
+
+        self._neighbors = self._db.selectVirtualSpaces(self._port)
+
+    def save_stream( self, stream ):
+        uid  = stream['uid']
+        gid  = stream['gid']
+        data = stream['data'].data
+
+    def connect( self, (user, passwd) ):
+        """
+        Open a connection to the server
+        @param (user, passwd): a touple that contains the user name, and user password
+        """
+        print "Iniciando protocolo de connexion"
+        u = self._db.selectUser(nick=user)
+        print "Obteniendo la informacion del usuario:", u.getNick()
+        res = None
+        if passwd == u.getPasswd():
+            res = Message.SUCCESS, u.getId()
+        else:
+            res = Message.FAILURE, 0
+        return res 
+
+    def storeStream(self, stream, name, owner, group ):
+        """
+        Recives the file's data (stream), and its metadata (name, owner, group)
+
+        @param stream: File's content.
+        @param name:   File's base name.
+        @param owner:  File's owner user id.
+        @param group:  File's owner's group id.
+
+        @return: Current File's version.
+        """
+        # Computing checksum
+        checksum = getCheckSum(stream)
+        # Selecting server to process the file
+        node = self._neighbors.nextVal()
+        # Opening connection
+        # s = ServerProxy(node.getURI())
+        # Recording operation.
+        # id : File's id
+        # ver: File's current version
+        sid, ver = self._db.storeFile(name, checksum, owner, group, len(stream),
+                                     node.getId()
+                                    )
+        # Sending stream
+        #s.processFile(Binary(stream), checksum, sid)
+        msg = "Enviando el archivo %s con identificador %i hacia el nodo %s, versión del archivo: %i"
+        logging.INFO(msg % (name,sid,node.getURI(),ver))
+        return Message.SUCCESS, ver
+
+
+
+class Node:
+
+    def __init__(self):
+        """
+        Class constructor   
+        """
+
+        conf = SADConfig()
+
+        self._host    = conf.getAddress()
+        self._port    = conf.getPort()
+        self._storage = conf.getStoragePath()
+        self._db      = conf.getDB()
+        self._msu     = conf.getMSU()
+
+        self._funcs   = dict()
+
+    def start( self ):
+        srv = SimpleXMLRPCServer( (self._host,self._port), logRequests=False )
+        srv.register_instance( self )
+        print "Starting service"
+        try:
+            srv.serve_forever()
+        except KeyboardInterrupt, e:
+            print "\nSystem halt."
+
+    def attend( self, mtype, message ):
+        print "%s : Petición recibida -- %s" % (str(mtype), str(message))
+        print "Tipo de peticion", type(message)
+
+        try:
+            res = self._funcs[mtype](self._handler, message)
+        except KeyError, e:
+            res = ( Message.FAILURE, Messages.Notimplemented )
+
+        return res
+
+    def itsMe( self, host ):
+        return self.__host == host
+
+    def setHandler( self, handler ):
+        self._handler = handler
+
+class Server ( Node ):
+
+	def __init__( self ):
+
+		Node.__init__(self)
+		self.__neighFrag = self._db.selectVirtualSpaces(self._port)
+		self.__neighIdas = self._db.selectVirtualSpaces(self._port)
+
+		self._funcs[Message.SAVE_STREAM]   = notImplementedFunction
+		self._funcs[Message.SAVE_FRAGMENT] = notImplementedFunction
+		self._funcs[Message.SAVE_BLOCK]    = notImplementedFunction
+		self._funcs[Message.LOAD_STREAM]   = notImplementedFunction
+		self._funcs[Message.LOAD_FRAGMENT] = notImplementedFunction
+		self._funcs[Message.LOAD_BLOCK]    = notImplementedFunction
+		self._funcs[Message.ADDUSER]       = notImplementedFunction
+		self._funcs[Message.DISUSER]       = notImplementedFunction
+		self._funcs[Message.ADDGROUP]      = notImplementedFunction
+		self._funcs[Message.DELGROUP]      = notImplementedFunction
+		self._funcs[Message.ADDNODE]       = notImplementedFunction
+
+class Proxy ( Node ):
+
+    def __init__(self):
+
+        Node.__init__(self)
+
+        self._funcs[Message.SAVE_STREAM]   = notImplementedFunction
+        self._funcs[Message.SAVE_FRAGMENT] = notImplementedFunction
+        self._funcs[Message.SAVE_BLOCK]    = notImplementedFunction
+        self._funcs[Message.LOAD_STREAM]   = notImplementedFunction
+        self._funcs[Message.LOAD_FRAGMENT] = notImplementedFunction
+        self._funcs[Message.LOAD_BLOCK]    = notImplementedFunction
+        self._funcs[Message.ADDUSER]       = notImplementedFunction
+        self._funcs[Message.DISUSER]       = notImplementedFunction
+        self._funcs[Message.ADDGROUP]      = notImplementedFunction
+        self._funcs[Message.DELGROUP]      = notImplementedFunction
+        self._funcs[Message.ADDNODE]       = notImplementedFunction
+        self._funcs[Message.CONNECT]       = ProxyHandler.connect
+
+# class Server:
+#     """
+#     A node in a Peer-to-Peer network
+#     """
+#     def __init__(self):
+#         """
+#         Class constructor   
+#         """
+#         
+#         conf = SADConfig()
+#         
+#         self.__host      = conf.getAddress()
+#         self.__port      = conf.getPort()
+#         self.__storage   = conf.getStoragePath()
+#         self.__db        = conf.getDB()
+#         self.__neighFrag = self.__db.selectVirtualSpaces(self.__port)
+#         self.__neighIdas = self.__db.selectVirtualSpaces(self.__port)
+#         self.__msu       = conf.getMSU()
+#         
+#         print "Creando servidor"
+#         print "Host: %35s" % self.__host
+#         print "Port: %35d" % self.__port
+#         print "MSU:  %35d bytes" % self.__msu 
+#         
+#     def __str__(self):
+#         return "%s:%d%s" % (self.__host, self.__port,
+#                             os.path.abspath(self.__storage))
+#         
+#     def start(self):
+#         srv = SimpleXMLRPCServer( (self.__host,self.__port), logRequests=False )
+#         srv.register_instance( self )
+#         srv.serve_forever()
+#         
+#     def itsMe(self, host):
+#         return self.__host == host
+#         
+#     def recover( self, fname ):
+#         path = os.path.join(self.__storage, fname)
+#         if not os.path.isfile(path): raise FileNotFound
+#         
+#         f = open(path, "rb")
+#         stream = Binary(f.read())
+#         f.close()
+#         return stream
+#     
+#     def store(self, fname, stream ):
+#         
+#         if stream == None : raise EmptyStream
+#         path = os.path.join( self.__storage, fname )
+#         f = open(path,"wb")
+#         f.write(stream.data)
+#         f.close()
+#         
+#         return 0
+#     
+#     def processFile( self, stream, checksum, file ):
+#         """
+#         Splits a stream to a set of fragments and give them to other peers.
+#         
+#         @param stream:   File's content.
+#         @param checksum: File's checksum string. 
+#         @param file:     File's id.
+#         
+#         @raise CorruptedFile: Raise this exception if the given checksum doesn't
+#         match with the stream's checksum 
+#         """
+#         
+#         if not checksum == getCheckSum(stream.data): raise CorruptedFile
+#         
+#         for i, piece in enumerate(splitStream(stream.data)):
+#             node = self.__neighFrag.nextVal()
+#             fchsum = getCheckSum(piece)
+#             id = self.__db.storeFragment(file, i, fchsum, len(piece), 
+#                                          node.getId()
+#                                         )
+#             
+#             if self.itsMe(node.getHost()):
+#                 self._localProcessFragment( piece, fchsum, id )
+#             else:
+#                 s = ServerProxy(node.getId())
+#                 s.processFragment(Binary(piece), fchsum, id )
+#             
+#     
+#     def _localProcessFragment(self, stream, checksum, fragment ):
+#         """
+#         Splits a stream to a set of idas and give them to other peers.
+#         
+#         @param stream:   Fragment's content.
+#         @param checksum: Fragment's checksum string. 
+#         @param fragment: Fragment's id.
+#         """
+#         # Implemented this way due to the IDA implementation available
+#         # Storing the fragment
+#         frname = "%s.frt" % checksum
+#         f = open(frname, "wb")
+#         f.write(stream.data)
+#         f.close()
+#         
+#         dis(frname)
+#         os.remove(frname)
+#         
+#         for fida in ["s%d" % k for k in range(5) ]:
+#             node = self.__neighIdas.nextVal()
+#             f = open(fida,"rb")
+#             stream_ida = f.read()
+#             f.close()
+#             os.remove(fida)
+#             chkida = getCheckSum(stream_ida)
+#             id = self.__db.storeIDA(fragment, k, chkida, len(stream_ida),
+#                                     node.getId())
+#             
+#             if self.itsMe(node.getId()):
+#                 self._storeIDA(stream_ida, chkida, k)
+#             else:
+#                 s = ServerProxy(node.getHost())
+#                 s.storeIDA(Binary(stream_ida), chkida,k)
+# 
+#         
+#         
+#     def processFragment(self, stream, checksum, fragment):
+#         """
+#         Splits a stream to a set of idas and give them to other peers.
+#         
+#         @param stream:   Fragment's content.
+#         @param checksum: Fragment's checksum string. 
+#         @param fragment: Fragment's id.
+#         
+#         @raise CorruptedFile: Raise this exception if the given checksum doesn't
+#         match with the stream's checksum 
+#         """
+#         if not checksum == getCheckSum(stream.data): raise CorruptedFile
+#         self._localProcessFragment(stream.data, checksum, fragment)
+#         
+#     
+#     def _storeIDA(self, stream, hash, pos ):
+#         fname = "%s-%d.ida"
+#         
+#         f = open(os.path.join(self.__storage, fname))
+#         f.write(stream)
+#         f.close()
+#     
+#     def storeIDA(self, stream, hash, pos):
+#         self._storeIDA(stream.data, hash, pos)
+# 

@@ -1,0 +1,95 @@
+#!/usr/bin/python
+# -*- coding:utf-8 -*-
+
+"""
+Celda client main script
+
+@file celda
+"""
+
+import os, sys, logging
+from optparse         import OptionParser
+from ui.shellui       import SADShell
+from getpass          import getpass
+from lib.config       import SADClientConfig as Config
+from lib.common       import MessagesENG as Messages
+from client.sadclient import Client
+
+def createparser():
+	"""
+	Create's the client command line parser
+	"""
+	parser = OptionParser()
+	parser.add_option(
+	    "-c", "--config",
+	    dest="config",
+	    help="Config file"
+	)
+
+	parser.add_option(
+	    "-u", "--user",
+	    dest="user",
+	    help="User name"
+	)
+
+	parser.add_option(
+            "-p", "--proxy",
+	    dest="proxy",
+	    help="Proxy's URL"
+	)
+
+	return parser
+
+def doconnect(client, user):
+	"""
+	Try to connect to the celda proxy
+	"""
+	conf = Config()
+	maxtries = conf.getmaxtries()
+	tries = 1
+	passwd = getpass()
+	client.connect( user, passwd )
+	while not client.isconnected() and tries < maxtries :
+		print Messages.TryAgain
+		passwd = getpass()
+		client.connect( user, passwd )
+		tries += 1
+
+def main():
+	"""
+	Celda client main function
+	"""
+	parser = createparser()
+	options, args = parser.parse_args()
+	del args
+	if options.user :
+		if options.config :
+			fconf = options.config
+		else:
+			fconf = os.path.expanduser('~/.celda/celda.conf')
+		conf = Config()
+		conf.setconfigfile( fconf )
+		conf.loadconf()
+		# Defining log format
+		logging.basicConfig(
+			format='%(asctime)s;%(levelname)s;%(message)s',
+			filename=conf.getlogfile(),
+			level=logging.DEBUG
+		)
+		client = Client(conf.getproxy(), conf.getdownloadspath())
+		doconnect(client, options.user)
+		if client.isconnected():
+			shell = SADShell()
+			shell.setclient(client)
+			try:
+				shell.cmdloop()
+			except KeyboardInterrupt:
+				print "\nGood Bye"
+		else:
+			print Messages.ConnectionRefused
+	else:
+		sys.stderr.write( Messages.MissingUser + '\n')
+		parser.print_help()
+
+if __name__ == '__main__':
+	main()

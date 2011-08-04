@@ -1,0 +1,101 @@
+#!/usr/bin/python
+# -*- coding:utf-8 -*-
+
+"""
+Created on 18/05/2011
+
+@author: diacus
+"""
+
+from optparse   import OptionParser
+from lib.config import SADConfig
+from lib.common import readmachinesfile, readusersfile
+from db.pgdata  import dbsetup
+
+class DataBaseCreator:
+
+    """
+    Class for create the data base structure
+    """
+    
+    def __init__(self):
+        """
+        Constructor class
+        """
+        pass
+    
+    def reset(self, db, vspace, users):
+        """
+        Resets the data base information
+        """
+        services = [
+            ("IDA", "Algoritmo de dispersión de información"),
+            ("Replicación", "Replicación Simple")
+        ]
+        for serv, desc in services:
+            db.addservice(serv, desc)
+
+        if users :
+            print "Loading Users"
+            for (a, b, c, d, e) in users:
+                uid = db.adduser(a, b, c, d, e)
+                db.bringservice2user(uid,2)
+
+        print "Loading Virtual Spaces"
+        for (a, b, c, d) in vspace:
+            db.addvirtualspace(a, b, c, d)
+
+
+
+def main():
+    """
+    Install script main function
+    """
+    parser = OptionParser()
+    
+    parser.add_option(
+        "-p",
+        "--prefix",
+        dest="prefix",
+        help="Sets instalation directory"
+    )
+    
+    parser.add_option(
+        "-m",
+        "--machines",
+        dest="machines",
+        help="Sets machines file"
+    )
+    
+    parser.add_option(
+        "-u",
+        "--users",
+        dest="users",
+        help="Sets users file"
+    )
+    
+    parser.add_option("-c",
+        "--conf",
+        dest="conf"
+    )
+    
+    options, args = parser.parse_args()
+    del args
+    
+    if options.machines == None or options.conf == None:
+        parser.print_help()
+    else:
+        conf      = SADConfig()
+        conf.setconfigfile(options.conf)
+        conf.loadconf()
+        macs      = readmachinesfile(options.machines)
+        users     = readusersfile(options.users) if options.users else None
+        installer = DataBaseCreator()
+        db = conf.getdb()
+        dbsetup(db)
+        installer.reset(db, macs, users)
+        
+    return 0
+
+if __name__ == '__main__':
+    main()

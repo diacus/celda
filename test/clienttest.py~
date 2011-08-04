@@ -1,0 +1,47 @@
+#!/usr/bin/python
+# -*- coding:utf-8 -*-
+
+import hashlib
+from xmlrpclib    import ServerProxy
+from client.sadclient import Client
+import data
+from data.message import Message
+from data.stream  import Stream, FileStream
+
+class Client:
+
+    def __init__(self, uri):
+        self._proxy = ServerProxy(uri)
+        self._uid = 0
+
+    def connect(self, user, password ):
+        print "Iniciando sesión como", user
+        upwd = hashlib.md5(password).hexdigest()
+        code, self._uid = self._send( Message.CONNECT, (user,upwd) )
+
+    def isConnected(self):
+        return self._uid > 0
+
+    def _send(self, mtype, arg):
+        return self._proxy.attend(mtype, arg)
+
+def main():
+    uri = raw_input('host: ')
+    client = Client(uri)
+    user = 'diacus'
+    upwd = 'passdiacus'
+    code, uid = client.connect(user,upwd)
+
+    if code == Message.SUCCESS :
+        print "Sesión iniciada correctamente"
+
+
+    else:
+        print "Falló el inicio de sesión"
+
+
+if __name__ == '__main__':
+    main()
+
+
+

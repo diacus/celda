@@ -1,0 +1,85 @@
+#!/usr/bin/python
+# -*- coding:utf-8 -*-
+
+"""
+Created on 04/06/2011
+
+@author: diacus
+"""
+
+import os, sys, logging
+from lib.common       import MessagesENG as Messages
+from lib.config       import SADConfig
+from optparse         import OptionParser
+from server.sadproxy  import Proxy, ProxyHandler
+from server.sadserver import Server, ServerHandler
+
+def main():
+    """
+    Celda node main function
+    """
+    parser = OptionParser()
+    parser.add_option("-c", "--config", dest="config", help="Config file.")
+    parser.add_option("-m", "--mode", dest="mode", help="proxy | node")
+    
+    options, args = parser.parse_args()
+    del args
+    if options.config:
+        fconf = options.config
+    else:
+        fconf = os.path.join('/etc/celda', "celdad.conf" )
+        
+    # Loading configuration
+    conf = SADConfig()
+    conf.setconfigfile(fconf)
+    conf.loadconf()
+    
+    # Defining log format
+    logging.basicConfig(
+        format='%(asctime)s;%(levelname)s;%(message)s',
+            # datefmt='%Y-%m-%d %I:%M:%S.%m %p ',
+        filename=conf.getlogfile(),
+        level=logging.DEBUG
+    )
+    
+    mode = options.mode if options.mode else "node"
+    
+    msg = "Starting %s at %s:%d" % ( mode, conf.getaddress(), conf.getport())
+    logging.info(msg)
+    
+    if mode == "proxy":
+        handler = ProxyHandler()
+        node = Proxy()
+        node.sethandler(handler)
+    elif mode == "node":
+        handler = ServerHandler()
+        node = Server()
+        node.sethandler(handler)
+    else:
+        msg = Messages.InvalidOption, '"%s"' % options.mode
+        logging.error(msg)
+        print msg
+        sys.exit(1)
+        
+    try:
+        print "\tListening Port:", conf.getport()
+        print "\tStorage Path:  ", conf.getstoragepath()
+        print "\tMSU:           ", conf.getmsu(), "bytes"
+
+        node.start()
+    except KeyboardInterrupt:
+        print "\n%s.\nGood Bye" % Messages.ServiceHalt
+    except:
+        msg = "Ending %s service at %s:%d" \
+            % ( mode, conf.getaddress(),conf.getport())
+        logging.critical(msg)
+        print Messages.UnknownError
+    finally:
+        msg = "Ending %s service at %s:%d" \
+            % ( mode, conf.getaddress(),conf.getport())
+        print msg
+        logging.info(msg)
+
+
+if __name__ == '__main__':
+    main()
